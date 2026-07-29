@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Head to head</title>
+<style>
+  :root{
+    --bg:#161616;
+    --card:#1f1f1f;
+    --card-border:#2c2c2c;
+    --text:#f2f2f0;
+    --text-dim:#9b9b96;
+    --text-faint:#6b6b67;
+    --accent-blue:#2f5fa8;
+    --accent-blue-text:#bcd4f7;
+    --accent-red:#8a2f2f;
+    --accent-red-text:#f2c4c4;
+    --tab-active-border:#3d7bd9;
+    --tab-active-bg:#1b2c47;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding:0;
+  }
+  .screen{
+    max-width:420px;
+    margin:0 auto;
+    padding:16px;
+  }
+  .topbar{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:16px;
+  }
+  .topbar .back{
+    font-size:20px;
+    color:var(--text);
+    text-decoration:none;
+    line-height:1;
+  }
+  .topbar h1{
+    font-size:17px;
+    font-weight:600;
+    margin:0;
+  }
+  .card{
+    background:var(--card);
+    border:1px solid var(--card-border);
+    border-radius:12px;
+    padding:16px;
+    margin-bottom:12px;
+  }
+  .record-card{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .player-col{
+    flex:1;
+    text-align:center;
+  }
+  .avatar{
+    width:44px;
+    height:44px;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-weight:600;
+    font-size:14px;
+    margin:0 auto 6px;
+  }
+  .avatar.a{background:var(--accent-blue);color:var(--accent-blue-text);}
+  .avatar.b{background:var(--accent-red);color:var(--accent-red-text);}
+  .player-name{
+    font-size:13px;
+    font-weight:500;
+  }
+  .record-mid{
+    text-align:center;
+    padding:0 10px;
+  }
+  .record-label{
+    font-size:11px;
+    color:var(--text-dim);
+    margin-bottom:2px;
+  }
+  .record-score{
+    font-size:18px;
+    font-weight:600;
+  }
+  .tabs{
+    display:flex;
+    gap:8px;
+    margin-bottom:14px;
+  }
+  .tab{
+    flex:1;
+    text-align:center;
+    padding:8px 4px;
+    border-radius:8px;
+    border:1px solid var(--card-border);
+    background:var(--card);
+    font-size:13px;
+    cursor:pointer;
+    color:var(--text);
+  }
+  .tab .count{color:var(--text-dim);}
+  .tab.active{
+    border-color:var(--tab-active-border);
+    background:var(--tab-active-bg);
+  }
+  .tab.empty{
+    opacity:0.45;
+    cursor:default;
+  }
+  .panel{display:none;}
+  .panel.active{display:block;}
+  .meeting-summary{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    cursor:pointer;
+  }
+  .meeting-summary .meta{
+    font-size:12.5px;
+    color:var(--text-dim);
+  }
+  .meeting-summary .score{
+    font-size:13px;
+    font-weight:600;
+  }
+  .stat-table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:13px;
+    margin-top:12px;
+  }
+  .stat-table th{
+    font-weight:500;
+    color:var(--text-dim);
+    text-align:center;
+    padding:4px 0;
+    font-size:12px;
+  }
+  .stat-table td{
+    padding:5px 0;
+  }
+  .stat-table td.label{
+    color:var(--text-dim);
+  }
+  .stat-table td.val{
+    text-align:center;
+  }
+  .chevron{
+    color:var(--text-faint);
+    font-size:12px;
+    margin-left:8px;
+  }
+  .empty-state{
+    text-align:center;
+    padding:40px 16px;
+    color:var(--text-dim);
+    font-size:14px;
+  }
+  .no-h2h{
+    text-align:center;
+    padding:60px 16px;
+    color:var(--text-dim);
+    font-size:15px;
+  }
+</style>
+</head>
+<body>
+
+<div class="screen">
+  <div class="topbar">
+    <a href="#" class="back" onclick="history.back();return false;">&#8592;</a>
+    <h1>Head to head</h1>
+  </div>
+
+  <div id="content"></div>
+</div>
+
+<script>
+// ---- CONFIG: swap this in once "Glide H2H Match Detail Feed" is published to web as CSV ----
+const DETAIL_FEED_CSV_URL = "REPLACE_WITH_PUBLISHED_SHEET_CSV_URL";
+
+function qp(name){
+  return new URLSearchParams(window.location.search).get(name);
+}
+
+function initials(name){
+  if(!name) return "??";
+  return name.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join("").toUpperCase();
+}
+
+function fmtStat(v){
+  if(v===undefined || v===null || v==="" || v==="-") return "&mdash;";
+  return v;
+}
+
+function parseCSV(text){
+  const rows = text.trim().split("\n").map(r=>r.split(","));
+  const headers = rows[0].map(h=>h.trim());
+  return rows.slice(1).map(r=>{
+    const obj = {};
+    headers.forEach((h,i)=> obj[h] = (r[i]||"").trim());
+    return obj;
+  });
+}
+
+async function main(){
+  const playerA = qp("playerA") || "";
+  const playerB = qp("playerB") || "";
+  const allTime = qp("allTime") || "0-0";
+  const hardRec = qp("hard") || "0-0";
+  const clayRec = qp("clay") || "0-0";
+  const grassRec = qp("grass") || "0-0";
+  const meetings = parseInt(qp("meetings") || "0", 10);
+
+  const content = document.getElementById("content");
+
+  // Record header renders immediately from params, no fetch needed
+  const headerHtml = `
+    <div class="card record-card">
+      <div class="player-col">
+        <div class="avatar a">${initials(playerA)}</div>
+        <div class="player-name">${playerA}</div>
+      </div>
+      <div class="record-mid">
+        <div class="record-label">all-time</div>
+        <div class="record-score">${allTime}</div>
+      </div>
+      <div class="player-col">
+        <div class="avatar b">${initials(playerB)}</div>
+        <div class="player-name">${playerB}</div>
+      </div>
+    </div>
+  `;
+
+  if(meetings === 0){
+    content.innerHTML = headerHtml + `<div class="no-h2h">No H2H data</div>`;
+    return;
+  }
+
+  const surfaces = [
+    {key:"Hard", rec:hardRec},
+    {key:"Clay", rec:clayRec},
+    {key:"Grass", rec:grassRec}
+  ];
+
+  content.innerHTML = headerHtml + `
+    <div class="tabs" id="tabs"></div>
+    <div id="panels"></div>
+  `;
+
+  let detailRows = [];
+  try{
+    const res = await fetch(DETAIL_FEED_CSV_URL);
+    const text = await res.text();
+    const all = parseCSV(text);
+    detailRows = all.filter(r =>
+      (r["Player"]===playerA && r["Opponent"]===playerB) ||
+      (r["Player"]===playerB && r["Opponent"]===playerA)
+    );
+  }catch(e){
+    console.error("Failed to load H2H detail feed", e);
+  }
+
+  // group unique meetings by Match Key, one meeting = one card, using whichever
+  // player row is available (prefer playerA's row if both exist)
+  const byMatchKey = {};
+  detailRows.forEach(r=>{
+    const mk = r["Match Key"];
+    if(!byMatchKey[mk]) byMatchKey[mk] = {};
+    byMatchKey[mk][r["Player"]] = r;
+  });
+
+  const tabsEl = document.getElementById("tabs");
+  const panelsEl = document.getElementById("panels");
+
+  surfaces.forEach((s, idx)=>{
+    const surfaceMeetings = Object.values(byMatchKey).filter(m=>{
+      const any = m[playerA] || m[playerB];
+      return any && any["Surface"] === s.key;
+    });
+    const isEmpty = surfaceMeetings.length === 0;
+
+    const tabBtn = document.createElement("div");
+    tabBtn.className = "tab" + (isEmpty ? " empty" : "") + (idx===0 && !isEmpty ? " active" : "");
+    tabBtn.innerHTML = `${s.key} <span class="count">${s.rec}</span>`;
+    if(!isEmpty){
+      tabBtn.addEventListener("click", ()=> setActiveSurface(s.key));
+    }
+    tabsEl.appendChild(tabBtn);
+
+    const panel = document.createElement("div");
+    panel.className = "panel" + (idx===0 && !isEmpty ? " active" : "");
+    panel.dataset.surface = s.key;
+
+    if(isEmpty){
+      panel.innerHTML = `<div class="empty-state">No meetings on this surface</div>`;
+    }else{
+      // sort most recent first using RecencyRankSurface if present
+      surfaceMeetings.sort((m1,m2)=>{
+        const r1 = m1[playerA] || m1[playerB];
+        const r2 = m2[playerA] || m2[playerB];
+        return parseInt(r1["RecencyRankSurface"]||99) - parseInt(r2["RecencyRankSurface"]||99);
+      });
+
+      surfaceMeetings.forEach((m, mIdx)=>{
+        const rowA = m[playerA];
+        const rowB = m[playerB];
+        const anyRow = rowA || rowB;
+        const card = document.createElement("div");
+        card.className = "card";
+
+        const summary = document.createElement("div");
+        summary.className = "meeting-summary";
+        summary.innerHTML = `
+          <span class="meta">${anyRow["Tournament"]} &middot; ${anyRow["Round"]} &middot; ${anyRow["Date"]}</span>
+          <span class="score">${anyRow["Result"]}<span class="chevron">&#9662;</span></span>
+        `;
+        card.appendChild(summary);
+
+        const statsWrap = document.createElement("div");
+        statsWrap.style.display = mIdx < 2 ? "block" : "none";
+
+        if(rowA && rowB){
+          statsWrap.innerHTML = `
+            <table class="stat-table">
+              <tr><th></th><th>${playerA}</th><th>${playerB}</th></tr>
+              <tr><td class="label">Aces</td><td class="val">${fmtStat(rowA["Aces"])}</td><td class="val">${fmtStat(rowB["Aces"])}</td></tr>
+              <tr><td class="label">DFs</td><td class="val">${fmtStat(rowA["DFs"])}</td><td class="val">${fmtStat(rowB["DFs"])}</td></tr>
+              <tr><td class="label">1st serve %</td><td class="val">${fmtStat(rowA["1st Srv Accuracy %"])}</td><td class="val">${fmtStat(rowB["1st Srv Accuracy %"])}</td></tr>
+              <tr><td class="label">BP saved</td><td class="val">${fmtStat(rowA["BPs Saved"])}</td><td class="val">${fmtStat(rowB["BPs Saved"])}</td></tr>
+              <tr><td class="label">BP converted</td><td class="val">${fmtStat(rowA["BPs Converted"])}</td><td class="val">${fmtStat(rowB["BPs Converted"])}</td></tr>
+            </table>
+          `;
+        }else{
+          // only one player's row logged for this match yet
+          const solo = rowA || rowB;
+          const soloName = rowA ? playerA : playerB;
+          statsWrap.innerHTML = `
+            <table class="stat-table">
+              <tr><th></th><th>${soloName}</th></tr>
+              <tr><td class="label">Aces</td><td class="val">${fmtStat(solo["Aces"])}</td></tr>
+              <tr><td class="label">DFs</td><td class="val">${fmtStat(solo["DFs"])}</td></tr>
+              <tr><td class="label">1st serve %</td><td class="val">${fmtStat(solo["1st Srv Accuracy %"])}</td></tr>
+              <tr><td class="label">BP saved</td><td class="val">${fmtStat(solo["BPs Saved"])}</td></tr>
+              <tr><td class="label">BP converted</td><td class="val">${fmtStat(solo["BPs Converted"])}</td></tr>
+            </table>
+          `;
+        }
+
+        summary.addEventListener("click", ()=>{
+          statsWrap.style.display = statsWrap.style.display === "none" ? "block" : "none";
+        });
+
+        card.appendChild(statsWrap);
+        panel.appendChild(card);
+      });
+    }
+
+    panelsEl.appendChild(panel);
+  });
+}
+
+function setActiveSurface(surfaceKey){
+  document.querySelectorAll(".tab").forEach(t=>{
+    t.classList.toggle("active", t.textContent.trim().startsWith(surfaceKey));
+  });
+  document.querySelectorAll(".panel").forEach(p=>{
+    p.classList.toggle("active", p.dataset.surface === surfaceKey);
+  });
+}
+
+main();
+</script>
+</body>
+</html>
